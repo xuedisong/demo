@@ -1,0 +1,124 @@
+package com.cloudhua.imageplatform.controller;
+
+import com.alibaba.fastjson.JSONObject;
+import com.cloudhua.imageplatform.domain.HttpEnv;
+import com.cloudhua.imageplatform.domain.User;
+import com.cloudhua.imageplatform.persistence.UserMapper;
+import com.cloudhua.imageplatform.service.exception.LogicalException;
+import com.cloudhua.imageplatform.service.exception.ParamException;
+import com.cloudhua.imageplatform.service.utils.AuthUtil;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Created by lixin on 2017/8/22.
+ */
+
+@RestController
+@RequestMapping("/user")
+public class UserController {
+
+    @Autowired
+    private UserMapper userMapper;
+
+    /**
+     * 添加用户
+     * @param httpEnv
+     * @param requestBody
+     * @throws IOException
+     * @throws LogicalException
+     */
+    @RequestMapping(method = RequestMethod.POST)
+    public void insert(HttpEnv httpEnv, @RequestBody byte[] requestBody) throws IOException, LogicalException {
+        List<User> userList = httpEnv.paramGetList("users", true, true, User.class);
+        for (User user : userList) {
+            user.setCtime(System.currentTimeMillis());
+            userMapper.addUser(user);
+            userMapper.setUserMtime(user.getUid(), System.currentTimeMillis());
+        }
+    }
+
+    /**
+     * 删除用户
+     * @param httpEnv
+     * @param requestBody
+     * @throws IOException
+     * @throws ParamException
+     */
+    @RequestMapping(method = RequestMethod.DELETE)
+    public void deleteByUids(HttpEnv httpEnv, @RequestBody byte[] requestBody) throws IOException, ParamException {
+        List<Long> uids = httpEnv.paramGetList("uids", true, true, Long.class);
+        for (Long uid : uids) {
+            userMapper.deleteUserByUid(uid);
+            userMapper.setUserMtime(uid, System.currentTimeMillis());
+        }
+    }
+
+    /**
+     * 查询用户
+     * @param uid
+     * @param httpEnv
+     * @throws IllegalAccessException
+     * @throws IOException
+     */
+    @RequestMapping(value = "/{uid}", method = RequestMethod.GET)
+    public void getByUid(@PathVariable(name = "uid") Long uid, HttpEnv httpEnv) throws IllegalAccessException, IOException {
+        User user = userMapper.getUserById(uid);
+        Map<String, Object> limitedInfo = new HashMap<String, Object>();
+        limitedInfo.put("uid", user.getUid());
+        limitedInfo.put("name", user.getName());
+        limitedInfo.put("nickname", user.getNickName());
+        limitedInfo.put("email", user.getEmail());
+        limitedInfo.put("phone", user.getPhone());
+
+        String resp = JSONObject.toJSONString(limitedInfo);
+        HttpServletResponse response = httpEnv.getResponse();
+        response.getWriter().write(resp);
+        response.getWriter().flush();
+        response.getWriter().close();
+        return;
+    }
+
+    /**
+     * 修改用户昵称，手机号等
+     * @param httpEnv
+     * @param requestBody
+     * @throws IOException
+     * @throws LogicalException
+     */
+    @RequestMapping(method = RequestMethod.PUT)
+    public void setByUid(HttpEnv httpEnv, @RequestBody byte[] requestBody) throws IOException, LogicalException {
+
+        Long uid = Long.valueOf(httpEnv.paramGetString("uid", true));
+        String nickName = httpEnv.paramGetString("nickName", false);
+        String email = httpEnv.paramGetString("email", false);
+        String phone = httpEnv.paramGetString("phone", false);
+        String password = httpEnv.paramGetString("password", false);
+        User user = userMapper.getUserById(uid);
+        if (user != null) {
+            if (nickName != null) {
+                userMapper.setUserNickName(uid, nickName);
+            }
+            if (email != null) {
+                userMapper.setEmail(uid, email);
+            }
+            if (phone != null) {
+                userMapper.setPhone(uid, phone);
+            }
+            if (password != null) {
+                String saltedPassword = AuthUtil.getSaltedPassword(password);
+                userMapper.setPassword(uid, saltedPassword);
+            }
+            userMapper.setUserMtime(uid, System.currentTimeMillis());
+        } else {
+            throw new ParamException("uid not found!");
+        }
+    }
+
+}

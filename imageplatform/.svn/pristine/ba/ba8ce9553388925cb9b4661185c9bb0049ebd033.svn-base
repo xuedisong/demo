@@ -1,0 +1,76 @@
+package com.cloudhua.imageplatform.service.log;
+
+/**
+ * Created by yangchao on 2017/7/25.
+ */
+public class Logger {
+
+    private org.apache.log4j.Logger debugLogger = org.apache.log4j.Logger.getLogger("debug");
+    private org.apache.log4j.Logger infoLogger = org.apache.log4j.Logger.getLogger("info");
+    private org.apache.log4j.Logger warnLogger = org.apache.log4j.Logger.getLogger("warn");
+    private org.apache.log4j.Logger errorLogger = org.apache.log4j.Logger.getLogger("error");
+
+    /**
+     * 是否打开debug日志
+     */
+    private static boolean httpDebugOpen = false;
+
+    private Logger logger;
+
+    private Logger(Class c) {
+        debugLogger = org.apache.log4j.Logger.getLogger(c);
+        infoLogger = org.apache.log4j.Logger.getLogger(c);
+        warnLogger = org.apache.log4j.Logger.getLogger(c);
+        errorLogger = org.apache.log4j.Logger.getLogger(c);
+    }
+
+    public static boolean isHttpDebugOpen() {
+        return httpDebugOpen;
+    }
+
+    /**
+     * 设置是否打开debug日志
+     * @param httpDebugOpen
+     */
+    public static void setHttpDebugOpen(boolean httpDebugOpen) {
+        Logger.httpDebugOpen = httpDebugOpen;
+    }
+
+    public static Logger getInst(Class c) {
+        return new Logger(c);
+    }
+
+    public void info(String msg) {
+        infoLogger.info(msg);
+    }
+
+    public void info(String msg, Throwable t) {
+        infoLogger.info(msg, t);
+    }
+
+    public void debug(String msg) {
+        if (Logger.httpDebugOpen)
+            debugLogger.debug(msg);
+    }
+
+    public void debug(String msg, Throwable t) {
+        if (Logger.httpDebugOpen)
+            debugLogger.debug(msg, t);
+    }
+
+    public void warn(String msg) {
+        warnLogger.warn(msg);
+    }
+
+    public void warn(String msg, Throwable t) {
+        warnLogger.warn(msg, t);
+    }
+
+    public void error(String msg) {
+        errorLogger.error(msg);
+    }
+
+    public void error(String msg, Throwable t) {
+        errorLogger.error(msg, t);
+    }
+}

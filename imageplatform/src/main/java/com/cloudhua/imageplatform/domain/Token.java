@@ -1,0 +1,136 @@
+package com.cloudhua.imageplatform.domain;
+
+import org.apache.commons.codec.binary.Base64;
+
+import java.nio.ByteBuffer;
+import java.util.UUID;
+
+/**
+ * Created by yangchao on 2017/8/20.
+ * 用户登录令牌类
+ */
+public class Token {
+
+    public static final long defaultTokenAge = 7 * 24 * 3600;
+
+    private long id;
+
+    private String token;
+
+    private long uid;
+
+    private long expires;//tokenage
+
+    private long ctime;
+
+    private String clientIp;
+
+    private String agent;
+
+    private String device;
+
+    public Token() {
+    }
+
+    public Token(long uid, long expires, String clientIp, String agent, String device) {
+        long now = System.currentTimeMillis();;
+        this.token = Token.makeToken(uid);
+        this.uid = uid;
+        this.expires = now + expires;
+        this.ctime = now;
+        this.clientIp = clientIp;
+        this.agent = agent;
+        this.device = device;
+    }
+
+    public Token(String token, long uid, long expires, long ctime, String clientIp, String agent, String device) {
+        this.token = token;
+        this.uid = uid;
+        this.expires = expires;
+        this.ctime = ctime;
+        this.clientIp = clientIp;
+        this.agent = agent;
+        this.device = device;
+    }
+
+    public Token(long id, String token, long uid, long expires, long ctime, String clientIp, String agent, String device) {
+        this.id = id;
+        this.token = token;
+        this.uid = uid;
+        this.expires = expires;
+        this.ctime = ctime;
+        this.clientIp = clientIp;
+        this.agent = agent;
+        this.device = device;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
+    public long getUid() {
+        return uid;
+    }
+
+    public void setUid(long uid) {
+        this.uid = uid;
+    }
+
+    public long getExpires() {
+        return expires;
+    }
+
+    public void setExpires(long expires) {
+        this.expires = expires;
+    }
+
+    public long getCtime() {
+        return ctime;
+    }
+
+    public void setCtime(long ctime) {
+        this.ctime = ctime;
+    }
+
+    public String getClientIp() {
+        return clientIp;
+    }
+
+    public void setClientIp(String clientIp) {
+        this.clientIp = clientIp;
+    }
+
+    public String getAgent() {
+        return agent;
+    }
+
+    public void setAgent(String agent) {
+        this.agent = agent;
+    }
+
+    public String getDevice() {
+        return device;
+    }
+
+    public void setDevice(String device) {
+        this.device = device;
+    }
+
+    public static String makeToken(long uid) {
+        long uuid = UUID.randomUUID().getMostSignificantBits();
+        byte[] uuidBytes = ByteBuffer.allocate(8).putLong(uuid).array();
+        return Base64.encodeBase64URLSafeString(uuidBytes) + "@" + uid;
+    }
+}

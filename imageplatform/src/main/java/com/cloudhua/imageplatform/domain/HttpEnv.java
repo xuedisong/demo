@@ -1,0 +1,642 @@
+package com.cloudhua.imageplatform.domain;
+
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import com.cloudhua.imageplatform.service.exception.ParamException;
+import com.cloudhua.imageplatform.service.log.Logger;
+import com.cloudhua.imageplatform.service.exception.LogicalException;
+import com.cloudhua.imageplatform.service.exception.StatusCode;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.tomcat.util.http.fileupload.IOUtils;
+
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintWriter;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Created by yangchao on 2017/8/16.
+ * http请求环境类
+ */
+public class HttpEnv {
+
+    private Logger logger = Logger.getInst(HttpEnv.class);//本类的日志
+
+    /**
+     * Serrvlet HTTP 请求对象
+     */
+    private HttpServletRequest request;
+
+    /**
+     * Servlet HTTP 返回对象
+     */
+    private HttpServletResponse response;
+
+    /**
+     * 客户端 IP
+     */
+    private String clientIp;
+
+    /**
+     * 客户端 MAC地址
+     */
+    private String clientMac;
+
+    /**
+     * 客户端设备类型 (有可能为 NULL)
+     */
+    private String device;
+
+    /**
+     * 全局唯一的请求 ID, 将会被写入访问日志和错误日志
+     */
+    private String requestId;
+
+    /**
+     * 用于存放插件自定义数据的 Map 对象
+     */
+    private Map<String, Object> sticker;
+
+    /**
+     * post传递的键值对作为json参数
+     */
+    private Map<String, Object> jsonParams;
+
+    /**
+     * response body返回数据是否是json格式，
+     * true：将jsonResult数据序列化后返回客户端
+     * false：不予处理
+     */
+    private boolean isJsonResponse = false;
+
+    /**
+     * json返回数据
+     */
+    private Map<String, Object> jsonResult = new ConcurrentHashMap<>();
+
+    /**
+     * 查询参数
+     */
+
+    private long reqStartTm;
+
+    /**
+     * nginx 代理前的http请求的protocol类型
+     */
+    private String scheme;
+
+    /**
+     * xserver 接受到的请求的端口号
+     */
+    private int port;
+
+    private String language;
+
+    public HttpServletRequest getRequest() {
+        return request;
+    }
+
+    public HttpServletResponse getResponse() {
+        return response;
+    }
+
+    public String getClientIp() {
+        return clientIp;
+    }
+
+    public String getClientMac() {
+        return clientMac;
+    }
+
+    public String getDevice() {
+        return device;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public Map<String, Object> getSticker() {
+        return sticker;
+    }
+
+    public Map<String, Object> getJsonParams() {
+        return jsonParams;
+    }
+
+    public long getReqStartTm() {
+        return reqStartTm;
+    }
+
+    public String getScheme() {
+        return scheme;
+    }
+
+    public int getPort() {
+        return port;
+    }
+
+    public Map<String, Object> getJsonResult() {
+        return jsonResult;
+    }
+
+    public void putJsonResponse(String key, Object value) {
+        this.jsonResult.put(key, value);
+    }
+
+    public void putAllJsonResonse(Map<String, Object> map) {
+        this.jsonResult.putAll(map);
+    }
+
+    public boolean isJsonResponse() {
+        return isJsonResponse;
+    }
+
+    public void setJsonResponse(boolean jsonResponse) {
+        isJsonResponse = jsonResponse;
+    }
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public HttpEnv() {
+        this.reqStartTm = System.currentTimeMillis();
+        this.requestId = makeRequestId();
+        this.sticker = new HashMap<String, Object>();
+    }
+
+    public HttpEnv(HttpServletRequest request, HttpServletResponse response) throws LogicalException {//从头文件里找信息初始化Event
+
+        this.request = request;
+        this.response = response;
+
+        String _device = request.getHeader("X-Device");//客户端设备信息
+        if (_device == null) {
+            _device = "Web";
+        }
+        String _mac = request.getHeader("X-Mac");
+        if (null != _mac && !"".equals(_mac.trim()))
+            this.clientMac = _mac;
+        this.device = _device;
+        this.clientIp = request.getRemoteAddr();
+        // for nginx proxy
+        if (request.getHeader("X-Forwarded-For") != null) {
+            this.clientIp = request.getHeader("X-Forwarded-For");
+        }
+        this.reqStartTm = System.currentTimeMillis();
+        this.requestId = this.makeRequestId();
+        this.sticker = new HashMap<String, Object>();
+        response.addHeader("X-RequestId", this.requestId);
+        this.scheme = request.getScheme();
+        this.port = request.getServerPort();
+        String languageTmp = request.getHeader("X-Language");
+        if (languageTmp == null) {
+            this.language = "zh";
+        } else {
+            this.language = languageTmp;
+        }
+    }
+
+    public void analysePostJsonData() throws LogicalException {//解析jason数据
+        if (jsonParams != null) {
+            // request已经解析过了直接返回
+            return;
+        }
+        Map<String, Object> map = new HashMap<>();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            try (InputStream is = this.request.getInputStream()) {
+                byte[] buff = new byte[1024];
+                int len = 0;
+                while ((len = is.read(buff)) != -1) {
+                    baos.write(buff, 0, len);
+                }
+            }
+            String postJsonStr = new String(baos.toByteArray(), "UTF-8");
+            JSONObject postJson = JSONObject.parseObject(postJsonStr);
+            map.putAll(postJson);
+        } catch (Exception e) {
+            logger.error("analysePostJsonData error. httpEnv:" + this.toString(), e);
+            throw new LogicalException(StatusCode.ANALYSE_POST_JSON_DATA_ERROR, StatusCode.ANALYSE_POST_JSON_DATA_ERROR);
+        }
+        jsonParams = Collections.unmodifiableMap(map);
+    }
+
+    public void analysePostJsonData(byte[] requestBody) throws LogicalException {//分析Post中的Json数据—————他把字节数组信息》——HttpEven中的Json信息
+        if (jsonParams != null) {
+            // request已经解析过了直接返回
+            return;
+        }
+        Map<String, Object> map = new HashMap<>();
+        try {
+            String postJsonStr = new String(requestBody, "UTF-8");
+            JSONObject postJson = JSONObject.parseObject(postJsonStr);
+            map.putAll(postJson);
+        } catch (Exception e) {
+            logger.error("analysePostJsonData error. httpEnv:" + this.toString(), e);
+            throw new LogicalException(StatusCode.ANALYSE_POST_JSON_DATA_ERROR, StatusCode.ANALYSE_POST_JSON_DATA_ERROR);
+        }
+        jsonParams = Collections.unmodifiableMap(map);
+    }
+
+    private String makeRequestId() {//制作访问日志ID
+        long uuid = UUID.randomUUID().getMostSignificantBits();//随机
+        byte[] uuidBytes = ByteBuffer.allocate(8).putLong(uuid).array();//化成字节数组
+        return Base64.encodeBase64URLSafeString(uuidBytes);//
+    }
+
+    public boolean isMobileDevice() {//是否为IOS设备
+
+        switch (device) {
+            case "ios":
+            case "android":
+                return true;
+            default:
+                return false;
+        }
+
+    }
+
+    public String getRequestheader(String header) {
+        return this.request.getHeader(header);
+    }
+
+    public String getUrlParam(String paramName) {
+        return this.request.getParameter(paramName);
+    }
+
+    public Cookie getCookieParam(String cookieName) {//获得请求中的特定cookie
+        Cookie[] cookies = this.request.getCookies();
+        for (Cookie cookie: cookies
+             ) {
+            if (cookie.getName().equals(cookieName)) {
+                return cookie;
+            }
+        }
+        return null;
+    }
+    /**
+     * 获取客户端传递过来的Long类型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否为空
+     * @return
+     * @throws ParamException
+     */
+    public Long paramGetLong(String name, boolean throwExceptionWhenValueIsEmpty) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return null;
+            }
+        }
+
+        if ((o instanceof Long) || (o instanceof Integer) || (o instanceof Short)) {
+            return Long.parseLong(String.valueOf(o));
+        }
+
+        if ((o instanceof String)) {
+            try {
+                return Long.parseLong((String)o);
+            } catch (Exception e) {
+                throw new ParamException("Param '" + name + "' should be number.");
+            }
+        }
+
+        throw new ParamException("Param '" + name + "' should be number.");
+    }
+
+    /**
+     * 获取客户端传递过来的整型参数
+     * 默认写到日志里
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否为空
+     * @return
+     * @throws ParamException
+     */
+    public Integer paramGetInteger(String name, boolean throwExceptionWhenValueIsEmpty) throws ParamException {
+        return paramGetInteger(name, throwExceptionWhenValueIsEmpty, Integer.class);
+    }
+    /**
+     * 获取客户端传递过来的整型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否为空
+     * @param type 指定参数类型
+     * @return
+     * @throws ParamException
+     */
+    public Integer paramGetInteger(String name, boolean throwExceptionWhenValueIsEmpty, Class<?> type) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return null;
+            }
+        }
+
+        if ((o instanceof Integer) || (o instanceof Short)) {
+            return Integer.parseInt(o.toString());
+        } else if (o instanceof String) {
+            try {
+                return Integer.parseInt(o.toString());
+            } catch (Exception e) {
+                throw new ParamException("Param '" + name + "' should be number.");
+            }
+        }
+
+        throw new ParamException("Param '" + name + "' should be integer.");
+    }
+    /**
+     * 获取客户端传递过来的Long类型参数
+     *
+     * @param name 参数名
+     * @param min 允许的最大值
+     * @param max 允许的最小值
+     * @return
+     * @throws ParamException
+     */
+    public Long paramGetLong(String name, long min, long max) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Long number = paramGetLong(name, true);
+        if (number < min || number > max) {
+            throw new ParamException("Param '" + name + "' out of range");
+        }
+        return number;
+    }
+    /**
+     * 获取double型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否允许为空
+     * @return
+     * @throws ParamException
+     */
+    public Double paramGetDouble(String name, boolean throwExceptionWhenValueIsEmpty) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return null;
+            }
+        }
+
+        if ((o instanceof Double) || (o instanceof Float)) {
+            return (Double)o;
+        }
+
+        if ((o instanceof String)) {
+            try {
+                return Double.parseDouble((String)o);
+            } catch (Exception e) {
+                throw new ParamException("Param '" + name + "' should be double.");
+            }
+        }
+
+        throw new ParamException("Param '" + name + "' should be double.");
+    }
+    /**
+     * 获取字符串型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否为空
+     * @return
+     * @throws ParamException
+     */
+    public String paramGetString(String name, boolean throwExceptionWhenValueIsEmpty) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return null;
+            }
+        }
+
+        if ((o instanceof String)) {
+            String s = (String)o;
+            if (throwExceptionWhenValueIsEmpty && s.length() == 0) {
+                throw new ParamException("Param '" + name + "' should not be empty.");
+            }
+            return s;
+        }
+
+        throw new ParamException("Param '" + name + "' should be string.");
+    }
+    /**
+     * 获取布尔类型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否为空
+     * @return
+     * @throws ParamException
+     */
+    public Boolean paramGetBoolean(String name, boolean throwExceptionWhenValueIsEmpty) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            }
+
+            return null;
+        }
+
+        if (o instanceof Boolean) {
+            return (Boolean)o;
+        }
+
+        if (o instanceof String) {
+            try {
+                return Boolean.parseBoolean((String)o);
+            } catch (Exception e) {
+                throw new ParamException("Param '" + name + "' should be boolean.");
+            }
+        }
+
+        throw new ParamException("Param '" + name + "' should be boolean.");
+    }
+
+    /**
+     * 获取列表类型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否为空
+     * @param type 参数类型
+     * @return
+     * @throws ParamException
+     */
+    public <T> List<T> paramGetList(String name, boolean throwExceptionWhenValueIsNull, boolean throwExceptionWhenValueIsEmpty, Class<?> type) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsNull) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return new ArrayList<T>();
+            }
+        }
+
+        if ((o instanceof List)) {
+            String str = o.toString();
+
+            try {
+                @SuppressWarnings("unchecked")
+                List<T> list = (List<T>) JSONArray.parseArray(str, type);
+                if (throwExceptionWhenValueIsEmpty && list.size() == 0) {
+                    throw new ParamException("Param '" + name + "', list should not be empty.");
+                }
+
+                for (@SuppressWarnings("unused") T item : list);
+
+                return list;
+            } catch (Exception e) {
+                throw new ParamException("Param '" + name + "', list should contains " + type.getName() + " only.");
+            }
+
+        }
+
+        throw new ParamException("Param '" + name + "' should be a list.");
+    }
+
+    /**
+     * 获取Map类型参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 参数名
+     * @param kt Map中键的类型
+     * @param vt Map中值的类型
+     * @return
+     * @throws ParamException
+     */
+    public <K, V> Map<K, V> paramGetMap(String name, boolean throwExceptionWhenValueIsEmpty, Class<K> kt, Class<V> vt) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return new HashMap<K, V>();
+            }
+        }
+
+        if ((o instanceof Map)) {
+            @SuppressWarnings("unchecked")
+            Map<K, V> map = (Map<K, V>)o;
+            if (throwExceptionWhenValueIsEmpty && map.size() == 0) {
+                throw new ParamException("Param '" + name + "', map should not be empty.");
+            }
+
+            return map;
+        }
+
+        throw new ParamException("Param '" + name + "' should be a map.");
+    }
+
+    /**
+     * 获取参数
+     *
+     * @param name 参数名
+     * @param throwExceptionWhenValueIsEmpty 是否允许为空
+     * @param type 参数的类型
+     * @return
+     * @throws ParamException
+     */
+    public <T> T paramGetObject(String name, boolean throwExceptionWhenValueIsEmpty, Class<?> type) throws ParamException {
+        if(jsonParams == null) {
+            throw new ParamException("jsonParams not analyse.");
+        }
+        Object o = this.jsonParams.get(name);
+        if (o == null) {
+            if (throwExceptionWhenValueIsEmpty) {
+                throw new ParamException("Param '" + name + "' needed.");
+            } else {
+                return null;
+            }
+        }
+
+        try {
+            @SuppressWarnings("uncheck")
+            T obj = (T) JSONObject.parseObject(o.toString(), type);
+
+            return obj;
+        } catch (Exception e) {
+            logger.error("analyse object param error. name:" + name + " httpEnv:" + this.toString(), e);
+            throw new ParamException(StatusCode.ERR_BAD_PARAMS);
+        }
+    }
+
+    /**
+     * resonse返回json数据，逻辑代码中请勿使用此方法
+     * @throws LogicalException
+     */
+    public void sendJsonResponse() throws LogicalException {
+        if (!isJsonResponse) {
+            return;
+        }
+        this.response.setContentType("application/json; charset=UTF-8");
+        try (PrintWriter pw = this.response.getWriter()) {
+            this.jsonResult.put("status", 200);
+            String jsonString = JSONObject.toJSONString(this.jsonResult);
+            pw.write(jsonString);
+            pw.flush();
+        } catch (IOException e) {
+            logger.error("repsonse write data error. httpEnv:" + this.toString(), e);
+            throw new LogicalException(StatusCode.RESPONSE_IO_ERROR, "repsonse write data error. httpEnv:" + this.toString());
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "HttpEnv{" +
+                "clientIp='" + clientIp + '\'' +
+                ", clientMac='" + clientMac + '\'' +
+                ", device='" + device + '\'' +
+                ", requestId='" + requestId + '\'' +
+                ", sticker=" + sticker +
+                ", jsonParams=" + jsonParams +
+                ", isJsonResponse=" + isJsonResponse +
+                ", jsonResult=" + jsonResult +
+                ", reqStartTm=" + reqStartTm +
+                ", scheme='" + scheme + '\'' +
+                ", port=" + port +
+                ", language='" + language + '\'' +
+                '}';
+    }
+
+    public String getPathInfo() {
+        return this.request.getPathInfo();
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "zh": {
+    "CLIENT_PARAMS_ERROR": "客户端请求错误",
+    "TOKEN_NOT_FOUND":"用户未登录",
+    "PARAMS_IS_NULL":"参数为空",
+    "TOKEN_EXPIRES":"登录信息过期"
+  }
+}

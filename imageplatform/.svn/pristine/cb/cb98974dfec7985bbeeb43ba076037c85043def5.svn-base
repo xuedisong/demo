@@ -1,0 +1,104 @@
+package com.cloudhua.imageplatform.aop;
+
+import com.cloudhua.imageplatform.domain.HttpEnv;
+import com.cloudhua.imageplatform.service.exception.LogicalException;
+import com.cloudhua.imageplatform.service.exception.RespJsonErrorMsg;
+import com.cloudhua.imageplatform.service.exception.StatusCode;
+import com.cloudhua.imageplatform.service.log.Logger;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * Created by yangchao on 2017/8/19.
+ */
+@Aspect
+@Component
+public class ControllerInterceptor {
+
+    private static Logger logger = Logger.getInst(ControllerInterceptor.class);
+
+    @Pointcut("execution(* com.cloudhua.imageplatform.controller..*(..)) " +
+            "&& @annotation(org.springframework.web.bind.annotation.RequestMapping)")
+    private void controllerPointcut() {}
+
+    @Around("controllerPointcut()")
+    @Order(0)
+    public void process(ProceedingJoinPoint pjp) {
+        RequestAttributes ra = RequestContextHolder.getRequestAttributes();
+        ServletRequestAttributes sra = (ServletRequestAttributes) ra;
+        HttpServletRequest request = sra.getRequest();
+        HttpServletResponse response = sra.getResponse();
+        // 判断是否不解析json数据
+        Boolean analyseJson = true;
+        Object object = request.getAttribute("NoJsonData");
+        if (object != null) {
+            analyseJson = Boolean.parseBoolean((String) object);
+        }
+        HttpEnv env;
+        try {
+            env = new HttpEnv(request, response);
+        } catch (LogicalException e) {
+            // 获取httpEnv出现错误直接返回客户端错误信息
+            String language = request.getHeader("X-Language");
+            if (language == null) {
+                language = "zh";
+            }
+            try {
+                RespJsonErrorMsg.sendErrorMsg(language, response, e.getStat());
+            } catch (Exception e1) {
+                logger.error("response client error msg failed.", e1);
+            }
+            return;
+        }
+
+        // 记录请求到达信息
+        logger.info("start, reqeustId:" + env.getRequestId() + " requestPathInfo:" + env.getPathInfo() + " httpEnv:" + env.toString());
+        long cost;
+        try {
+            Object[] args = pjp.getArgs();
+            for (int i=0; i < args.length; i++) {
+                if (args[i] instanceof HttpEnv) {
+                    args[i] = env;
+                }
+                if (args[i] instanceof byte[]) {
+                    byte[] bodyData = (byte[]) args[i];
+                    if (analyseJson)
+                        env.analysePostJsonData(bodyData);
+                }
+            }
+            pjp.proceed(args);
+            long endTime = System.currentTimeMillis();
+            cost = endTime - env.getReqStartTm();
+            env.getResponse().setHeader("X-Cost", String.valueOf(cost));
+            env.setJsonResponse(true);
+            // 执行完成，返回json数据
+            env.sendJsonResponse();
+        } catch (Throwable t) {
+            logger.error("http api execute error. httpEnv:" + env.toString(), t);
+            try {
+                if (t instanceof LogicalException) {
+                    LogicalException logicalException = (LogicalException) t;
+                    RespJsonErrorMsg.sendErrorMsg(env.getLanguage(), env.getResponse(), logicalException.getStat());
+                } else {
+                    RespJsonErrorMsg.sendErrorMsg(env.getLanguage(), env.getResponse(), StatusCode.ERR_SERVER_EXCEPTION);
+                }
+            } catch (Exception e) {
+                logger.error("response client error msg failed.", e);
+            }
+        }
+
+        logger.info("end, reqeustId:" + env.getRequestId() + " requestPathInfo:" + env.getPathInfo() + " responseJson:" + env.getJsonResult());
+    }
+}

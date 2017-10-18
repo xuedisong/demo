@@ -1,0 +1,78 @@
+package com.cloudhua.imageplatform.persistence;
+
+import com.cloudhua.imageplatform.domain.Dept;
+import org.apache.ibatis.annotations.*;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+/**
+ * Created by yangchao on 2017/8/20.
+ */
+@Mapper
+@Repository
+public interface DeptMapper {
+
+    @Insert("INSERT INTO `dept` (`pdid`, `name`, `order`, `status`, `attr`, `ctime`, `mtime`)" +
+            " VALUES (#{dept.pdid}, #{dept.name}, #{dept.order}, #{dept.status}, #{dept.attr}, #{dept.ctime}, #{dept.mtime})")
+    @SelectKey(statement = "SELECT LAST_INSERT_ID()", keyProperty = "dept.did", before = false, resultType = long.class)
+    int addDept(@Param("dept") Dept dept);
+
+    @Delete("DELETE FROM `dept` WHERE `did`=#{did}")
+    int deleteDept(@Param("did") long did);
+
+    @Delete("DELETE FROM `dept` WHERE `pdid`=#{pdid} AND `name`=#{name}")
+    int deleteDeptByNamePdid(@Param("pdid") long pdid, @Param("name") String name);
+
+    @Update("UPDATE `dept` SET `pdid`=#{pdid} WHERE `did`=#{did}")
+    int setDeptParent(@Param("did") long did, @Param("pdid") long pdid);
+
+    @Update("UPDATE `dept` SET `name`=#{name} WHERE `did`=#{did}")
+    int setDeptName(@Param("did") long did, @Param("name") String name);
+
+    @Update("UPDATE `dept` SET `order`=#{order} WHERE `did`=#{did}")
+    int setDeptOrder(@Param("did") long did, @Param("order") long order);
+
+    @Update("UPDATE `dept` SET `status`=#{status} WHERE `did`=#{did}")
+    int setDeptStatus(@Param("did") long did, @Param("status") int status);
+
+    @Update("UPDATE `dept` SET `attr`=#{attr} WHERE `did`=#{did}")
+    int setDeptAttr(@Param("did") long did, @Param("attr") String attr);
+
+    @Update("UPDATE `dept` SET `ctime`=#{ctime} WHERE `did`=#{did}")
+    int setDeptCtime(@Param("did") long did, @Param("ctime") long ctime);
+
+    @Update("UPDATE `dept` SET `mtime`=#{mtime} WHERE `did`=#{did}")
+    int setDeptMtime(@Param("did") long did, @Param("mtime") long mtime);
+
+    @Select("SELECT * FROM `dept` WHERE `did`=#{did}")
+    Dept getDeptByDid(@Param("did") long did);
+
+    @Select("SELECT * FROM `dept` WHERE `pdid`=#{pdid} AND `name`=#{name}")
+    Dept getDept(@Param("pdid") long pdid, @Param("name") String name);
+
+    @Select("SELECT * FROM `dept` WHERE `status`=#{status}")
+    List<Dept> getDeptsByStat(@Param("status") int status);
+
+    @Select("SELECT * FROM `dept` WHERE `name`=#{name}")
+    List<Dept> getDeptsByName(@Param("name") String name);
+
+    /*******用户部门操作********/
+    @Insert("INSERT INTO `dept_user` (`did`, `uid`) VALUES (#{did}, #{uid})")
+    int addDeptUser(@Param("did") long did, @Param("uid") long uid);
+
+    @Delete("DELETE FROM `dept_user` WHERE `did`=#{did} AND `uid`=#{uid}")
+    int deleteDeptUser(@Param("did") long did, @Param("uid") long uid);
+
+    @Delete("DELETE FROM `dept_user` WHERE `did`=#{did}")
+    int deleteDeptUsers(@Param("did") long did);
+
+    @Delete("DELETE FROM `dept_user` WHERE `uid`=#{uid}")
+    int deleteUserDepts(@Param("uid") long uid);
+
+    @Select("SELECT `did` FROM `dept_user` WHERE `uid`=#{uid}")
+    List<Long> getUserDeptIds(@Param("uid") long uid);
+
+    @Select("SELECT `uid` FROM `dept_user` WHERE `did`=#{did}")
+    List<Long> getDeptUserIds(@Param("did") long did);
+}

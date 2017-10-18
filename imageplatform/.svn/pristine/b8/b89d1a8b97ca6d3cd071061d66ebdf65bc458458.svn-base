@@ -1,0 +1,51 @@
+package com.cloudhua.imageplatform.persistence;
+
+import com.cloudhua.imageplatform.domain.User;
+import org.apache.ibatis.annotations.*;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+/**
+ * Created by yangchao on 2017/8/20.
+ */
+@Mapper
+@Repository
+public interface UserMapper {
+
+    @Insert("INSERT INTO `user` (`name`, `nickName`, `email`, `phone`, `password`, `postion`, `status`, `order`, `attr`, `ctime`, `mtime`" +
+            " VALUES(#{user.name}, #{user.nickName}, #{user.email}, #{user.phone}, #{user.password}, #{user.postion}, #{user.status}, " +
+            " #{ user.order}, #{user.attr}, #{user.ctime}, #{attr.mtime}))")
+    @SelectKey(statement = "SELECT LAST_INSERT_ID()", keyProperty = "user.uid", before = false, resultType = long.class)
+    int addUser(@Param("user") User user);
+
+    @Update("UPDATE `user` SET `status`=0 WHERE `uid`=#{uid}")
+    int deleteUserByUid(@Param("uid") long uid);
+
+    @Update("UPDATE `user` SET `status`=0 WHERE `name`=#{name}")
+    int deleteUserByName(@Param("name") String name);
+
+    @Update("Update `user` SET `nickName`=#{nickName} WHERE `uid`=#{uid}")
+    int setUserNickName(@Param("uid") long uid, @Param("nickName") String nickName);
+
+    @Select("SELECT * FROM `user` WHERE `uid`=#{uid}")
+    User getUserById(@Param("uid") long uid);
+
+    @Select("SELECT * FROM `user` WHERE `name`=#{name}")
+    User getUserByName(@Param("name") String name);
+
+    @Select("SELECT * FROM `user` WHERE `email`=#{email}")
+    List<User> getUsersByEmail(@Param("email") String email);
+
+    @Select("SELECT * FROM `user` WHERE `phone`=#{phone}")
+    List<User> getUserByPhone(@Param("phone") String phone);
+
+    @Select("SEKECT * FROM `user` WHERE `status`=#{status}")
+    List<User> getUserByStatus(@Param("status") String status);
+
+    @Select("SELECT *  FROM `user` WHERE name like '%#{name}%'")
+    List<User> searchUserByName(@Param("name") String name);
+
+    @Select("SELECT *  FROM `user` WHERE name like '%#{nickName}%'")
+    List<User> searchUserByNickName(@Param("nickName") String nickName);
+}

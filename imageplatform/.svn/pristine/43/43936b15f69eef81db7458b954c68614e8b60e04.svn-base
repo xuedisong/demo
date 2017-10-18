@@ -1,0 +1,124 @@
+package com.cloudhua.imageplatform.service.utils;
+
+import com.alibaba.fastjson.JSONObject;
+import com.cloudhua.imageplatform.service.log.Logger;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
+
+/**
+ * Created by yangchao on 2017/7/18.
+ * 简单http post get请求工具
+ */
+public class HttpUtils {
+
+    private static Logger logger = Logger.getInst(HttpUtils.class);
+
+    private static RequestConfig requestConfig = RequestConfig.custom()
+            .setSocketTimeout(15000)
+            .setConnectTimeout(15000)
+            .setConnectionRequestTimeout(15000)
+            .build();
+
+    public static byte[] getData(String downloadurl) {
+        logger.debug("getData method downloadurl:" + downloadurl);
+        try (CloseableHttpClient httpClient = HttpClients.custom().setDefaultRequestConfig(requestConfig).build()) {
+            HttpGet httpget = new HttpGet(downloadurl);
+            HttpResponse httpResponse = httpClient.execute(httpget);
+            try (InputStream is = httpResponse.getEntity().getContent()) {
+                try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[1024];
+                    int len = 0;
+                    while ((len = is.read(buffer)) != -1) {
+                        baos.write(buffer, 0, len);
+                    }
+                    logger.debug("getData method return.");
+                    return baos.toByteArray();
+                }
+            }
+        } catch (IOException e) {
+            logger.error("HttpUtils get file content data error. downloadUrl:" + downloadurl, e);
+        }
+        logger.debug("getData method return has something error.");
+        return null;
+    }
+
+    /**
+     * 请求xserver
+     * @param url 网盘url地址
+     * @param bodyParams 请求参数
+     * @return 返回网盘响应信息，返回码200返回body数据，其他返回码返回null表示请求出错
+     */
+    public static String postJsonData(String url, Map<String, Object> bodyParams) {
+        logger.debug("postXserver method url:" + url + " bodyParams:" + bodyParams);
+        return postJsonData(url, bodyParams, null);
+    }
+
+    /**
+     * 请求xserver
+     * @param url 网盘url地址
+     * @param bodyParams 请求参数
+     * @param headers 请求头信息
+     * @return 返回网盘响应信息，返回码200返回body数据，其他返回码返回null表示请求出错
+     */
+    public static String postJsonData(String url, Map<String, Object> bodyParams, Map<String, String> headers) {
+        logger.debug("postXserver method url:" + url + " bodyParams:" + bodyParams + " headers:" + headers);
+        try (CloseableHttpClient httpClient = HttpClients.custom().setDefaultRequestConfig(requestConfig).build()) {
+            HttpPost httpPost = new HttpPost(url);
+            if (headers != null) {
+                for (String key: headers.keySet()
+                     ) {
+                    String value = headers.get(key);
+                    httpPost.addHeader(key, value);
+                }
+            }
+
+            if (bodyParams != null) {
+                JSONObject reqJson = new JSONObject(bodyParams);
+                StringEntity entity = new StringEntity(reqJson.toString());
+                httpPost.setEntity(entity);
+            }
+            HttpResponse httpResponse = httpClient.execute(httpPost);
+            if (httpResponse.getStatusLine().getStatusCode() != 200) {
+                return null;
+            } else {
+                String responseStr = EntityUtils.toString(httpResponse.getEntity());
+                logger.debug("postXserver method return responseStr:" + responseStr);
+                return responseStr;
+            }
+        } catch (IOException e) {
+            logger.error("HttpUtils get file content data error. url:" + url + " bodyParams:" + bodyParams + " headers:" + headers, e);
+        }
+        logger.debug("postXserver method return has something error.");
+        return null;
+    }
+
+    public static String get(String url) {
+        logger.debug("get method url:" + url);
+        try (CloseableHttpClient httpClient = HttpClients.custom().setDefaultRequestConfig(requestConfig).build()) {
+            HttpGet httpGet = new HttpGet(url);
+            HttpResponse httpResponse = httpClient.execute(httpGet);
+            if (httpResponse.getStatusLine().getStatusCode() != 200) {
+                return null;
+            } else {
+                String responseStr = EntityUtils.toString(httpResponse.getEntity());
+                logger.debug("get method return responseStr:" + responseStr);
+                return responseStr;
+            }
+        } catch (IOException e) {
+            logger.error("HttpUtils get method error. url:" + url, e);
+        }
+        logger.debug("get method return has something error.");
+        return null;
+    }
+}

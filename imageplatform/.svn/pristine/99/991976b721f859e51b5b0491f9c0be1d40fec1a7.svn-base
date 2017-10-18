@@ -1,0 +1,86 @@
+package com.cloudhua.imageplatform.service.utils;
+
+import com.cloudhua.imageplatform.service.exception.LogicalException;
+import com.cloudhua.imageplatform.service.exception.StatusCode;
+import com.cloudhua.imageplatform.service.exception.UnInitializeException;
+import org.apache.log4j.Logger;
+
+import java.util.concurrent.*;
+
+/**
+ * Created by yangchao on 2017/8/16.
+ * 线程池调度器，包装ScheduledThreadPoolExecutor对外提供方法
+ */
+public class ThreadScheduler {
+
+    private Logger logger = Logger.getLogger(ThreadScheduler.class);
+
+    private static ScheduledExecutorService scheduledExecutorService;
+
+    private static ThreadScheduler threadScheduler;
+
+    private static ConcurrentMap<String, ScheduledFuture> features = new ConcurrentHashMap<>();
+
+    private ThreadScheduler(int corePoolSize) {
+        scheduledExecutorService = new ScheduledThreadPoolExecutor(corePoolSize);
+    }
+
+    public static void init() {
+        if (threadScheduler == null)
+            threadScheduler = new ThreadScheduler(20);
+    }
+
+    public static void init(int corePoolSize) {
+        if (threadScheduler == null)
+            threadScheduler = new ThreadScheduler(corePoolSize);
+    }
+
+    public static ThreadScheduler getInst() throws UnInitializeException {
+        if (threadScheduler == null) {
+            throw new UnInitializeException("UNTINIT", "not init threadScheduler");
+        }
+        return threadScheduler;
+    }
+
+    public void execute(Runnable runnable) {
+        scheduledExecutorService.execute(runnable);
+    }
+
+    public void schedule(Runnable runnable, long delay, TimeUnit unit) {
+        scheduledExecutorService.schedule(runnable, delay, unit);
+    }
+
+    public void scheduleAtFixedRate(Runnable runnable, long initialDelay, long period, TimeUnit unit) {
+        scheduledExecutorService.scheduleAtFixedRate(runnable, initialDelay, period, unit);
+    }
+
+    public void scheduleWithFixedDelay(Runnable runnable, long initialDelay, long period, TimeUnit unit) {
+        ScheduledFuture<?> future = scheduledExecutorService.scheduleWithFixedDelay(runnable, initialDelay, period, unit);
+    }
+
+    public void scheduleAtFixedRate(String taskName, boolean cancelOldTask, Runnable runnable, long initialDelay, long period, TimeUnit unit) throws LogicalException {
+        attemptCancelTask(taskName, cancelOldTask);
+        ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(runnable, initialDelay, period, unit);
+        features.put(taskName, future);
+    }
+
+    public void scheduleWithFixedDelay(String taskName, boolean cancelOldTask, Runnable runnable, long initialDelay, long period, TimeUnit unit) throws LogicalException {
+        attemptCancelTask(taskName, cancelOldTask);
+        ScheduledFuture future = scheduledExecutorService.scheduleAtFixedRate(runnable, initialDelay, period, unit);
+        features.put(taskName, future);
+    }
+
+    private void attemptCancelTask(String taskName, boolean cancelOldTask) throws LogicalException {
+        if (features.containsKey(taskName)) {
+            if (cancelOldTask) {
+                ScheduledFuture future = features.get(taskName);
+                if (!future.isDone()) {
+                    future.cancel(true);
+                }
+            } else {
+                logger.warn("cancel schedule task failed, taskName:" + taskName);
+                throw new LogicalException(StatusCode.SCHEDULE_TASK_EXIST, StatusCode.SCHEDULE_TASK_EXIST);
+            }
+        }
+    }
+}

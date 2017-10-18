@@ -1,0 +1,24 @@
+ufa:
+  center: http://192.168.1.183:9090/uctr/stor
+  access:
+    id: xxx
+    sec: yyy
+
+spring:
+  data:
+    elasticsearch:
+      properties:
+        path:
+          logs: ./elasticsearch/log #elasticsearch日志存储目录
+          data: ./elasticsearch/data #elasticsearch数据存储目录
+
+jdbc:
+  driver: com.mysql.jdbc.Driver
+  url: jdbc:mysql://127.0.0.1:3306
+  db: imageplatform
+  params: useUnicode=true&characterEncoding=utf8
+  username: root
+  password: 123456
+  maxActive: 10000
+  maxIdel: 120
+  maxWait: 100
